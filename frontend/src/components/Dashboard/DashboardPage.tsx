@@ -34,6 +34,7 @@ const CLINIC_LIST = [
   { id: 'newport',   name: 'Newport'   },
   { id: 'narrabeen', name: 'Narrabeen' },
   { id: 'brookvale', name: 'Brookvale' },
+  { id: 'overall',   name: 'Overall'   },
 ]
 
 // ── Sub-components ────────────────────────────────────────────

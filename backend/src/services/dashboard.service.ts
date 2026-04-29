@@ -7,7 +7,7 @@ import { calculateMonthlyTotals } from './kpi.calculator';
 import { getWeekRanges, getMonthRange } from './week.calculator';
 import { snapshotRepository } from '../repositories/snapshot.repository';
 import { env } from '../config/env';
-import { Clinic, MonthlyDashboard, WeekMetrics, WeekRange } from '../types';
+import { Clinic, CLINICS, MonthlyDashboard, MonthlyTotals, WeekMetrics, WeekRange } from '../types';
 
 export interface DashboardResult extends MonthlyDashboard {
   fetchedAt: string;
@@ -57,7 +57,102 @@ export const dashboardService = {
       duration:  Date.now() - startedAt,
     };
   },
+
+  /**
+   * "Overall" = sum of the 3 per-clinic snapshots for the same month.
+   * Each clinic uses its own cache, so this is typically a cheap roll-up.
+   * Numeric fields (revenue, counts) are summed; rate fields (showUpRate,
+   * cancellationRate, caseAcceptance) are left null because a simple average
+   * across clinics would be misleading without the underlying booked-appt
+   * counts — we'll wire them properly once cancelled/rebooked metrics are in.
+   */
+  async getOverall(
+    year:         number,
+    month:        number,
+    forceRefresh: boolean
+  ): Promise<DashboardResult> {
+    const startedAt = Date.now();
+
+    const results = await Promise.all(
+      CLINICS.map((c) => this.getMonthly(c, year, month, forceRefresh))
+    );
+
+    const weekCount = Math.max(...results.map((r) => r.weeks.length));
+    const weeks: WeekMetrics[] = [];
+    for (let i = 0; i < weekCount; i++) {
+      const parts = results.map((r) => r.weeks[i]).filter(Boolean) as WeekMetrics[];
+      if (parts.length) weeks.push(sumWeeks(parts));
+    }
+
+    const monthly = sumMonthly(results.map((r) => r.monthly));
+
+    return {
+      clinic:    'Overall',
+      clinicId:  'overall',
+      month, year,
+      weeks,
+      monthly,
+      fetchedAt: new Date().toISOString(),
+      fromCache: results.every((r) => r.fromCache),
+      duration:  Date.now() - startedAt,
+    };
+  },
 };
+
+const SUM_WEEK_FIELDS: (keyof WeekMetrics)[] = [
+  'totalRevenue', 'productSalesRevenue', 'upfrontRevenue', 'cashFromInsurance',
+  'debtCollection', 'newPatients', 'patientReactivations', 'newOptIns',
+  'totalPatients', 'appointmentsAttended', 'appointmentsCancelled',
+  'appointmentsRebooked', 'noShows', 'upfrontPlanAccepted', 'productsUpsold',
+  'complementaryTransitions', 'activePatients',
+];
+
+const SUM_MONTHLY_FIELDS: (keyof MonthlyTotals)[] = SUM_WEEK_FIELDS as (keyof MonthlyTotals)[];
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function sumWeeks(parts: WeekMetrics[]): WeekMetrics {
+  const first = parts[0];
+  const out: WeekMetrics = {
+    weekNum:          first.weekNum,
+    label:            first.label,
+    dateFrom:         first.dateFrom,
+    dateTo:           first.dateTo,
+    totalRevenue:     0, productSalesRevenue: 0, upfrontRevenue: 0,
+    cashFromInsurance: 0, debtCollection: 0,
+    newPatients: 0, patientReactivations: 0, newOptIns: 0,
+    totalPatients: 0, appointmentsAttended: 0, appointmentsCancelled: 0,
+    appointmentsRebooked: 0, noShows: 0,
+    showUpRate: null, cancellationRate: null, caseAcceptance: null,
+    upfrontPlanAccepted: 0, productsUpsold: 0,
+    complementaryTransitions: 0, activePatients: 0,
+  };
+  for (const key of SUM_WEEK_FIELDS) {
+    const sum = parts.reduce((s, p) => s + ((p[key] as number) || 0), 0);
+    (out[key] as number) = roundMoney(sum);
+  }
+  return out;
+}
+
+function sumMonthly(parts: MonthlyTotals[]): MonthlyTotals {
+  const out: MonthlyTotals = {
+    totalRevenue: 0, productSalesRevenue: 0, upfrontRevenue: 0,
+    cashFromInsurance: 0, debtCollection: 0,
+    newPatients: 0, patientReactivations: 0, newOptIns: 0,
+    totalPatients: 0, appointmentsAttended: 0, appointmentsCancelled: 0,
+    appointmentsRebooked: 0, noShows: 0,
+    showUpRate: null, cancellationRate: null, caseAcceptance: null,
+    upfrontPlanAccepted: 0, productsUpsold: 0,
+    complementaryTransitions: 0, activePatients: 0,
+  };
+  for (const key of SUM_MONTHLY_FIELDS) {
+    const sum = parts.reduce((s, p) => s + ((p[key] as number) || 0), 0);
+    (out[key] as number) = roundMoney(sum);
+  }
+  return out;
+}
 
 /**
  * Build monthly dashboard from v3 GraphQL using a shared data cache:
@@ -120,6 +215,9 @@ async function fetchFromNookal(
   monthly.upfrontRevenue       = monthlyUpfront.total;
   monthly.newPatients          = monthlyPatients.newPatients;
   monthly.patientReactivations = monthlyPatients.patientReactivations;
+  // totalPatients intentionally NOT overridden — per Sam: Monthly = sum of
+  // weekly totals (same client seen multiple weeks counts once per week).
+  // calculateMonthlyTotals already sums the week values for this field.
 
   return {
     clinic:   clinic.name,
@@ -155,11 +253,11 @@ function reportToWeekMetrics(
     patientReactivations: patients.patientReactivations,
     newOptIns:            0,
 
-    totalPatients:            0,
-    appointmentsAttended:     0,
+    totalPatients:            patients.uniqueClients,
+    appointmentsAttended:     patients.completedConsults,
     appointmentsCancelled:    0,
     appointmentsRebooked:     0,
-    noShows:                  0,
+    noShows:                  patients.didNotArrive,
     showUpRate:               null,
     cancellationRate:         null,
     caseAcceptance:           null,

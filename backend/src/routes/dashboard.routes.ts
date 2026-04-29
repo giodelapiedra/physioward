@@ -21,17 +21,13 @@ router.get('/clinics', (_req, res: Response) => {
 });
 
 // GET /api/dashboard/monthly?clinic=newport&month=4&year=2026[&refresh=1]
+// clinic=overall returns a synthetic aggregate across all 3 clinics.
 router.get('/monthly', async (req: AuthRequest, res: Response, next) => {
   try {
     const { clinic, month, year, refresh } = req.query;
 
     if (!clinic || !month || !year) {
       return res.status(400).json({ error: 'clinic, month, year are required' });
-    }
-
-    const clinicData = CLINICS.find((c) => c.id === clinic);
-    if (!clinicData) {
-      return res.status(400).json({ error: `Unknown clinic: ${clinic}` });
     }
 
     const m = Number(month);
@@ -44,8 +40,21 @@ router.get('/monthly', async (req: AuthRequest, res: Response, next) => {
     }
 
     const forceRefresh = refresh === '1' || refresh === 'true';
-    const result = await dashboardService.getMonthly(clinicData, y, m, forceRefresh);
 
+    if (clinic === 'overall') {
+      const result = await dashboardService.getOverall(y, m, forceRefresh);
+      console.log(
+        `[dashboard] Overall ${m}/${y} — ${result.fromCache ? 'ALL CACHE' : 'ROLL-UP'} (${result.duration}ms)`
+      );
+      return res.json(result);
+    }
+
+    const clinicData = CLINICS.find((c) => c.id === clinic);
+    if (!clinicData) {
+      return res.status(400).json({ error: `Unknown clinic: ${clinic}` });
+    }
+
+    const result = await dashboardService.getMonthly(clinicData, y, m, forceRefresh);
     console.log(
       `[dashboard] ${clinicData.name} ${m}/${y} — ${result.fromCache ? 'CACHE HIT' : 'FRESH'} (${result.duration}ms)`
     );

@@ -233,6 +233,7 @@ export const APPOINTMENTS_BY_DATE_QUERY = /* GraphQL */ `
       isNewCase
       arrived
       status
+      dna
     }
   }
 `;
@@ -247,6 +248,7 @@ export interface V3Appointment {
   isNewCase:       number;
   arrived:         number;
   status:          string | null;
+  dna:             number | null;   // 1 = appointment was marked DNA at some point
 }
 
 export interface AppointmentsByDateResult {
