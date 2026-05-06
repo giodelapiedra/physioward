@@ -1,15 +1,41 @@
 import React, { useEffect } from 'react'
 import { useAuthStore } from './store/auth.store'
+import { useNavStore } from './store/nav.store'
 import LoginPage from './components/Auth/LoginPage'
 import DashboardPage from './components/Dashboard/DashboardPage'
+import UserManagementPage from './components/Admin/UserManagementPage'
+import DropoutAdminPage from './components/Admin/DropoutAdminPage'
+import DropoutAnalyticsPage from './components/Admin/DropoutAnalyticsPage'
+import CEOAnalyticsPage from './components/Admin/CEOAnalyticsPage'
+import CaseAcceptanceAdminPage from './components/Admin/CaseAcceptanceAdminPage'
+import AuditLogPage from './components/Admin/AuditLogPage'
+import DropoutEntryPage from './components/Dropouts/DropoutEntryPage'
+import CaseAcceptanceEntryPage from './components/CaseAcceptance/CaseAcceptanceEntryPage'
+import ToastContainer from './components/shared/ToastContainer'
+import ConfirmDialog from './components/shared/ConfirmDialog'
+import PromptDialog from './components/shared/PromptDialog'
 
 export default function App() {
-  const { isAuthenticated, isLoading, refreshToken } = useAuthStore()
+  const { isAuthenticated, isLoading, refreshToken, user } = useAuthStore()
+  const { page, navigate } = useNavStore()
 
   // On app load — try to restore session via refresh token cookie
+  useEffect(() => { refreshToken() }, [])
+
+  // When user changes role (e.g. just logged in), pick a sensible default page.
   useEffect(() => {
-    refreshToken()
-  }, [])
+    if (!user) return
+    if (user.role === 'ADMIN') {
+      if (!['dashboard', 'admin-ceo-analytics', 'admin-users', 'admin-dropouts', 'admin-dropout-analytics', 'admin-case-acceptance', 'admin-activity-log'].includes(page)) {
+        navigate('dashboard')
+      }
+    } else {
+      if (!['dropout-entry', 'case-acceptance-entry'].includes(page)) {
+        navigate('dropout-entry')
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.role])
 
   if (isLoading) {
     return (
@@ -32,5 +58,24 @@ export default function App() {
     )
   }
 
-  return isAuthenticated ? <DashboardPage /> : <LoginPage />
+  if (!isAuthenticated || !user) {
+    return <><LoginPage /><ToastContainer /><ConfirmDialog /><PromptDialog /></>
+  }
+
+  let page_node: React.ReactNode
+  if (user.role === 'ADMIN') {
+    if      (page === 'admin-users')              page_node = <UserManagementPage />
+    else if (page === 'admin-dropouts')           page_node = <DropoutAdminPage />
+    else if (page === 'admin-dropout-analytics')  page_node = <DropoutAnalyticsPage />
+    else if (page === 'admin-ceo-analytics')      page_node = <CEOAnalyticsPage />
+    else if (page === 'admin-case-acceptance')    page_node = <CaseAcceptanceAdminPage />
+    else if (page === 'admin-activity-log')       page_node = <AuditLogPage />
+    else                                          page_node = <DashboardPage />
+  } else {
+    // CLINICIAN, FRONT_DESK, FRONT_DESK_GLOBAL — same two pages.
+    if (page === 'case-acceptance-entry') page_node = <CaseAcceptanceEntryPage />
+    else                                  page_node = <DropoutEntryPage />
+  }
+
+  return <>{page_node}<ToastContainer /><ConfirmDialog /><PromptDialog /></>
 }

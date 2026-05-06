@@ -50,7 +50,7 @@ export default function LoginPage() {
           </div>
           <div style={{ fontWeight: 700, fontSize: 20, color: '#111827' }}>PhysioWard</div>
           <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4, letterSpacing: '0.04em' }}>
-            CEO DASHBOARD
+            INTERNAL PORTAL
           </div>
         </div>
 

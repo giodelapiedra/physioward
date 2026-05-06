@@ -1,19 +1,29 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { DashboardData, WeekMetrics, MonthlyTotals } from '../../types'
 import { dashboardApi } from '../../api/dashboard.api'
-import { useAuthStore } from '../../store/auth.store'
 import FetchProgress from '../common/FetchProgress'
+import AppShell from '../shared/AppShell'
 
 // ── Format helpers ────────────────────────────────────────────
-const DASH = '—'
+// Empty / null / zero cells render as a plain "0" (rather than an em-dash)
+// so the dashboard reads like a tracker — every cell has a number.
+const ZERO_CURRENCY = '$0.00'
+const ZERO_INT      = '0'
+const ZERO_PCT      = '0%'
 const fmtCurrency = (v: number) =>
   `$${v.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtCurrencyCell = (v: number | null | undefined) =>
-  v == null || v === 0 ? DASH : fmtCurrency(v)
+  v == null || v === 0 ? ZERO_CURRENCY : fmtCurrency(v)
 const fmtIntCell = (v: number | null | undefined) =>
-  v == null || v === 0 ? DASH : v.toLocaleString('en-AU')
+  v == null || v === 0 ? ZERO_INT : v.toLocaleString('en-AU')
 const fmtPctCell = (v: number | null | undefined) =>
-  v == null ? DASH : `${v.toFixed(1)}%`
+  v == null ? ZERO_PCT : `${v.toFixed(1)}%`
+
+/** Cells that ended up as one of the "no data" zero forms — greyed out so a
+ *  real value (e.g. "$5,128.00") still pops visually. */
+function isZeroCell(v: string): boolean {
+  return v === ZERO_INT || v === ZERO_PCT || v === ZERO_CURRENCY
+}
 
 // ── Colours ───────────────────────────────────────────────────
 const TEAL       = '#0f6e56'
@@ -72,7 +82,7 @@ function DataRow({
     fontFamily: "'DM Mono', monospace",
     fontVariantNumeric: 'tabular-nums',
     borderBottom: `1px solid ${BORDER}`,
-    color: v === DASH ? TEXT_MUTED : highlight ? TEAL : TEXT,
+    color: isZeroCell(v) ? TEXT_MUTED : highlight ? TEAL : TEXT,
     background: rowBg,
     whiteSpace: 'nowrap',
     fontWeight: bold ? 600 : 400,
@@ -103,8 +113,8 @@ function DataRow({
         whiteSpace: 'nowrap',
       }}>{metricType || ''}</td>
       <td style={numericCell(monthly, true)}>{monthly}</td>
-      <td style={{ ...numericCell(monthlyGoal ?? DASH), color: TEXT_MUTED }}>
-        {monthlyGoal ?? DASH}
+      <td style={{ ...numericCell(monthlyGoal ?? ZERO_INT), color: TEXT_MUTED }}>
+        {monthlyGoal ?? ZERO_INT}
       </td>
     </tr>
   )
@@ -180,10 +190,10 @@ function DashboardTable({ data }: { data: DashboardData }) {
     />
   )
 
-  const emptyRow = (label: string, def: string, metricType = 'Total', monthly = DASH) => (
+  const emptyRow = (label: string, def: string, metricType = 'Total', monthly = ZERO_INT) => (
     <DataRow
       label={label} definition={def}
-      wk1={DASH} wk2={DASH} wk3={DASH} wk4={DASH} rem={DASH}
+      wk1={ZERO_INT} wk2={ZERO_INT} wk3={ZERO_INT} wk4={ZERO_INT} rem={ZERO_INT}
       metricType={metricType} monthly={monthly}
       alt={nextAlt()}
     />
@@ -326,7 +336,6 @@ function DashboardTable({ data }: { data: DashboardData }) {
 
 // ── Main Dashboard Page ───────────────────────────────────────
 export default function DashboardPage() {
-  const { logout, user }    = useAuthStore()
   const now                 = new Date()
   const [clinic, setClinic] = useState('newport')
   const [month, setMonth]   = useState(now.getMonth() + 1)
@@ -372,7 +381,8 @@ export default function DashboardPage() {
   })()
 
   return (
-    <div className="print-root" style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: "'DM Sans', sans-serif" }}>
+    <AppShell>
+    <div className="print-root">
       <style>{`
         @keyframes spin { to { transform: rotate(360deg) } }
         @keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
@@ -455,40 +465,6 @@ export default function DashboardPage() {
           .metric-row:hover td { background: inherit !important }
         }
       `}</style>
-
-      {/* ── Header ── */}
-      <div className="no-print" style={{
-        background: NAVY, color: '#fff',
-        padding: '0 28px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        height: 56, boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{
-            width: 34, height: 34, background: TEAL, borderRadius: 8,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>PW</span>
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: '0.01em' }}>PhysioWard Sports & Rehab</div>
-            <div style={{ fontSize: 10, opacity: 0.5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>CEO Dashboard</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ fontSize: 12, opacity: 0.5 }}>{user?.email}</span>
-          <button
-            onClick={logout}
-            style={{
-              background: 'transparent', border: '1px solid rgba(255,255,255,0.2)',
-              color: '#fff', borderRadius: 6, padding: '5px 12px',
-              fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
-            }}
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
 
       {/* ── Controls Bar ── */}
       <div className="no-print" style={{
@@ -695,5 +671,6 @@ export default function DashboardPage() {
         )}
       </div>
     </div>
+    </AppShell>
   )
 }

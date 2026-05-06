@@ -6,7 +6,9 @@
     "build": "tsc && node -e \"require('fs').cpSync('src/db/migrations','dist/db/migrations',{recursive:true})\"",
     "start": "node dist/index.js",
     "db:migrate": "ts-node-dev --transpile-only src/db/migrate.ts",
-    "db:seed": "ts-node-dev --transpile-only src/db/seed.ts"
+    "db:seed": "ts-node-dev --transpile-only src/db/seed.ts",
+    "db:seed:front-desk": "ts-node-dev --transpile-only src/db/seed-front-desk.ts",
+    "db:import:dropouts": "ts-node-dev --transpile-only src/db/import-dropouts-2026.ts"
   },
   "dependencies": {
     "axios": "^1.6.0",
@@ -14,6 +16,7 @@
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "exceljs": "^4.4.0",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",

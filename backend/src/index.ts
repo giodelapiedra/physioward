@@ -1,4 +1,4 @@
-import express, { NextFunction, Request, Response } from 'express';
+import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -8,8 +8,13 @@ import { runMigrations } from './db/migrate';
 import { seedInitialUser } from './db/seed';
 import { closePool } from './db/pool';
 
-import authRoutes      from './routes/auth.routes';
-import dashboardRoutes from './routes/dashboard.routes';
+import authRoutes           from './routes/auth.routes';
+import dashboardRoutes      from './routes/dashboard.routes';
+import usersRoutes          from './features/users/users.routes';
+import dropoutsRoutes       from './features/dropouts/dropouts.routes';
+import caseAcceptanceRoutes from './features/case-acceptance/case-acceptance.routes';
+import auditLogRoutes        from './features/audit-log/audit-log.routes';
+import { errorMiddleware } from './middleware/error.middleware';
 
 const app = express();
 
@@ -21,23 +26,22 @@ app.use(cors({
 app.use(cookieParser());
 app.use(express.json());
 
-app.use('/api/auth',      authRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/auth',            authRoutes);
+app.use('/api/dashboard',       dashboardRoutes);
+app.use('/api/users',           usersRoutes);
+app.use('/api/dropouts',        dropoutsRoutes);
+app.use('/api/case-acceptance', caseAcceptanceRoutes);
+app.use('/api/audit-log',       auditLogRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found' });
+  res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
 });
 
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[error]', err);
-  res.status(500).json({
-    error: env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
-  });
-});
+app.use(errorMiddleware);
 
 async function start() {
   await runMigrations();

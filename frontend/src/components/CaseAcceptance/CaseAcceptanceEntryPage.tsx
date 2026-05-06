@@ -1,0 +1,578 @@
+import React, { useEffect, useState, useCallback } from 'react'
+import {
+  caseAcceptanceApi,
+  CreateCaseAcceptancePayload, UpdateCaseAcceptancePayload,
+} from '../../api/caseAcceptance.api'
+import { usersApi } from '../../api/users.api'
+import {
+  CaseAcceptanceDTO,
+  FRONT_STAFF_NAMES, FrontStaffName,
+  User, CLINIC_LABEL, ClinicId,
+} from '../../types'
+
+const CLINIC_OPTIONS: ClinicId[] = ['newport', 'narrabeen', 'brookvale']
+import { useAuthStore } from '../../store/auth.store'
+import { toast } from '../../store/toast.store'
+import { confirmDialog } from '../../store/confirm.store'
+import AppShell from '../shared/AppShell'
+import Pagination from '../shared/Pagination'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+
+const TEAL      = '#0f6e56'
+const TEXT      = '#111827'
+const TEXT_SOFT = '#4b5563'
+const BORDER    = '#e5e7eb'
+const DANGER    = '#b91c1c'
+
+const SAME_DAY_WINDOW_MS = 24 * 60 * 60 * 1000
+
+function todayISO(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Tri-state form value for nullable booleans: '' | 'Y' | 'N'. */
+type Tri = '' | 'Y' | 'N'
+function triToBool(t: Tri): boolean | null {
+  if (t === 'Y') return true
+  if (t === 'N') return false
+  return null
+}
+function boolToTri(b: boolean | null | undefined): Tri {
+  if (b === true)  return 'Y'
+  if (b === false) return 'N'
+  return ''
+}
+
+interface FormState {
+  date_logged:              string
+  clinic_id:                ClinicId | ''
+  clinician_id:             string
+  front_staff_name:         FrontStaffName | ''  // CLINICIAN dropdown only
+  patient_name:             string
+  treatment_plan_provided:  Tri
+  case_recommendations:     string  // controlled input — kept as string
+  appointments_booked:      string
+  prepay_offered:           Tri
+  prepay_accepted:          Tri
+  transition_completed:     Tri
+  notes:                    string
+}
+
+function emptyForm(currentUser: User): FormState {
+  return {
+    date_logged:             todayISO(),
+    clinic_id:               currentUser.role === 'FRONT_DESK_GLOBAL'
+                               ? ''
+                               : (currentUser.clinic_id ?? '') as ClinicId | '',
+    clinician_id:            currentUser.role === 'CLINICIAN' ? currentUser.id : '',
+    front_staff_name:        '',
+    patient_name:            '',
+    treatment_plan_provided: '',
+    case_recommendations:    '0',
+    appointments_booked:     '0',
+    prepay_offered:          '',
+    prepay_accepted:         '',
+    transition_completed:    '',
+    notes:                   '',
+  }
+}
+
+export default function CaseAcceptanceEntryPage() {
+  const { user } = useAuthStore()
+  if (!user) return null
+
+  const isReceptionist    = user.role === 'FRONT_DESK' || user.role === 'FRONT_DESK_GLOBAL'
+  const isFrontDeskGlobal = user.role === 'FRONT_DESK_GLOBAL'
+
+  const [rows,    setRows]    = useState<CaseAcceptanceDTO[]>([])
+  const [total,   setTotal]   = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState('')
+
+  const [limit,  setLimit]  = useState(50)
+  const [offset, setOffset] = useState(0)
+
+  const [searchInput, setSearchInput] = useState('')
+  const search = useDebouncedValue(searchInput.trim(), 300)
+
+  useEffect(() => { setOffset(0) }, [search, limit])
+
+  const [clinicians, setClinicians] = useState<User[]>([])
+
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<FormState>(emptyForm(user))
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await caseAcceptanceApi.list({
+        limit, offset,
+        search: search || undefined,
+      })
+      setRows(res.data)
+      setTotal(res.pagination.total)
+    } catch (e: any) {
+      setError(e.response?.data?.error?.message || 'Failed to load entries')
+    } finally { setLoading(false) }
+  }, [limit, offset, search])
+
+  useEffect(() => { load() }, [load])
+
+  // Pinned-clinic users (FRONT_DESK / CLINICIAN) load clinicians from their
+  // own clinic; FRONT_DESK_GLOBAL loads from whichever clinic they pick.
+  const activeClinic: ClinicId | null = isFrontDeskGlobal
+    ? (form.clinic_id ? form.clinic_id : null)
+    : ((user.clinic_id as ClinicId | null) ?? null)
+  useEffect(() => {
+    if (!activeClinic) { setClinicians([]); return }
+    usersApi.staff('CLINICIAN', activeClinic).then(setClinicians).catch(() => {})
+  }, [activeClinic])
+
+  const startEdit = (row: CaseAcceptanceDTO) => {
+    setEditingId(row.id)
+    setForm({
+      date_logged:             row.date_logged,
+      clinic_id:               row.clinic_id,
+      clinician_id:            row.clinician_id,
+      front_staff_name:        (FRONT_STAFF_NAMES as readonly string[]).includes(row.front_staff_name ?? '')
+                                 ? (row.front_staff_name as FrontStaffName)
+                                 : '',
+      patient_name:            row.patient_name,
+      treatment_plan_provided: boolToTri(row.treatment_plan_provided),
+      case_recommendations:    String(row.case_recommendations),
+      appointments_booked:     String(row.appointments_booked),
+      prepay_offered:          boolToTri(row.prepay_offered),
+      prepay_accepted:         boolToTri(row.prepay_accepted),
+      transition_completed:    boolToTri(row.transition_completed),
+      notes:                   row.notes ?? '',
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setForm(emptyForm(user))
+  }
+
+  const onSubmit = async () => {
+    setError('')
+
+    if (isFrontDeskGlobal && !form.clinic_id) return setError('Clinic is required')
+    if (!form.patient_name.trim())             return setError('Patient name is required')
+    if (!form.clinician_id)                    return setError('Clinician is required')
+
+    const recs   = parseInt(form.case_recommendations, 10)
+    const booked = parseInt(form.appointments_booked,  10)
+    if (!Number.isFinite(recs)   || recs   < 0) return setError('Case recommendations must be a non-negative integer')
+    if (!Number.isFinite(booked) || booked < 0) return setError('Appointments booked must be a non-negative integer')
+    if (booked > recs)                          return setError('Booked cannot exceed case recommendations')
+
+    setSaving(true)
+    const patientName = form.patient_name.trim()
+    try {
+      const frontStaff = isReceptionist
+        ? undefined
+        : (form.front_staff_name || null)
+
+      const shared = {
+        date_logged:             form.date_logged,
+        clinician_id:            form.clinician_id,
+        ...(frontStaff !== undefined ? { front_staff_name: frontStaff } : {}),
+        patient_name:            patientName,
+        treatment_plan_provided: triToBool(form.treatment_plan_provided),
+        case_recommendations:    recs,
+        appointments_booked:     booked,
+        prepay_offered:          triToBool(form.prepay_offered),
+        prepay_accepted:         triToBool(form.prepay_accepted),
+        transition_completed:    triToBool(form.transition_completed),
+        notes:                   form.notes.trim() || null,
+      }
+
+      if (editingId) {
+        const patch: UpdateCaseAcceptancePayload = shared
+        await caseAcceptanceApi.update(editingId, patch)
+        toast.success(`Updated case entry for ${patientName}`)
+      } else {
+        const payload: CreateCaseAcceptancePayload = {
+          ...shared,
+          ...(isFrontDeskGlobal ? { clinic_id: form.clinic_id as ClinicId } : {}),
+        }
+        await caseAcceptanceApi.create(payload)
+        toast.success(`Added case entry for ${patientName}`)
+      }
+      cancelEdit()
+      await load()
+    } catch (e: any) {
+      const details = e.response?.data?.error?.details
+      const detailsMsg = Array.isArray(details)
+        ? details.map((d: any) => `${d.path}: ${d.message}`).join(', ')
+        : ''
+      const msg = (e.response?.data?.error?.message || 'Failed to save') + (detailsMsg ? ` — ${detailsMsg}` : '')
+      setError(msg)
+      toast.error(msg)
+    } finally { setSaving(false) }
+  }
+
+  const onDelete = async (row: CaseAcceptanceDTO) => {
+    const ok = await confirmDialog.destructive({
+      title:        'Delete case entry?',
+      message:      `Patient: ${row.patient_name}\nLogged: ${row.date_logged}\n\nThis cannot be undone.`,
+      confirmLabel: 'Delete entry',
+    })
+    if (!ok) return
+    try {
+      await caseAcceptanceApi.remove(row.id)
+      toast.success(`Deleted case entry for ${row.patient_name}`)
+      await load()
+    } catch (e: any) {
+      toast.error(e.response?.data?.error?.message || 'Failed to delete')
+    }
+  }
+
+  const isEditable = (row: CaseAcceptanceDTO) => {
+    if (row.entered_by !== user.id) return false
+    const ageMs = Date.now() - new Date(row.created_at).getTime()
+    return ageMs <= SAME_DAY_WINDOW_MS
+  }
+
+  return (
+    <AppShell title="Daily Case Recommendation & Acceptance Tracker">
+      <div style={{ padding: '20px 28px' }}>
+        {/* Form card */}
+        <div style={{
+          background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10,
+          padding: 18, marginBottom: 20,
+        }}>
+          <div style={{
+            fontSize: 14, fontWeight: 600, color: TEXT, marginBottom: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span>{editingId ? 'Editing entry' : 'New case entry'}</span>
+            {editingId && (
+              <button onClick={cancelEdit} style={smallBtnStyle}>Cancel edit</button>
+            )}
+          </div>
+
+          {error && (
+            <div style={{
+              background: '#fef2f2', border: '1px solid #fecaca', color: DANGER,
+              borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 12,
+            }}>{error}</div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <Field label="Date">
+              <input type="date" value={form.date_logged}
+                onChange={e => setForm({ ...form, date_logged: e.target.value })}
+                style={inputStyle} />
+            </Field>
+
+            {isFrontDeskGlobal && (
+              <Field label="Clinic">
+                <select value={form.clinic_id}
+                  onChange={e => setForm({
+                    ...form,
+                    clinic_id:    e.target.value as ClinicId | '',
+                    clinician_id: '',
+                  })}
+                  style={inputStyle}>
+                  <option value="">— Select clinic —</option>
+                  {CLINIC_OPTIONS.map(c => (
+                    <option key={c} value={c}>{CLINIC_LABEL[c]}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+
+            {user.role === 'CLINICIAN' ? (
+              <Field label="Clinician">
+                <input value={user.full_name || user.email} disabled style={{ ...inputStyle, background: '#f9fafb' }} />
+              </Field>
+            ) : (
+              <Field label="Clinician">
+                <select value={form.clinician_id}
+                  onChange={e => setForm({ ...form, clinician_id: e.target.value })}
+                  style={inputStyle}
+                  disabled={isFrontDeskGlobal && !form.clinic_id}>
+                  <option value="">
+                    {isFrontDeskGlobal && !form.clinic_id
+                      ? '— Pick a clinic first —'
+                      : '— Select clinician —'}
+                  </option>
+                  {clinicians.map(c => (
+                    <option key={c.id} value={c.id}>{c.full_name || c.email}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+
+            {isReceptionist ? (
+              <Field label="Front of staff name (your login)">
+                <input
+                  value={user.full_name || user.email}
+                  disabled
+                  style={{ ...inputStyle, background: '#f9fafb' }}
+                />
+              </Field>
+            ) : (
+              <Field label="Front of staff name">
+                <select value={form.front_staff_name}
+                  onChange={e => setForm({ ...form, front_staff_name: e.target.value as FrontStaffName | '' })}
+                  style={inputStyle}>
+                  <option value="">— Select —</option>
+                  {FRONT_STAFF_NAMES.map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+
+            <Field label="Patient name">
+              <input value={form.patient_name}
+                onChange={e => setForm({ ...form, patient_name: e.target.value })}
+                placeholder="e.g. Andrew Hicks"
+                style={inputStyle} />
+            </Field>
+
+            <Field label="Treatment plan provided">
+              <TriSelect value={form.treatment_plan_provided}
+                onChange={v => setForm({ ...form, treatment_plan_provided: v })} />
+            </Field>
+
+            <Field label="Case recommendations">
+              <input type="number" min={0} max={1000} value={form.case_recommendations}
+                onChange={e => setForm({ ...form, case_recommendations: e.target.value })}
+                style={inputStyle} />
+            </Field>
+
+            <Field label="Appointments booked">
+              <input type="number" min={0} max={1000} value={form.appointments_booked}
+                onChange={e => setForm({ ...form, appointments_booked: e.target.value })}
+                style={inputStyle} />
+            </Field>
+
+            <Field label="Prepay offered">
+              <TriSelect value={form.prepay_offered}
+                onChange={v => setForm({ ...form, prepay_offered: v })} />
+            </Field>
+
+            <Field label="Prepay accepted">
+              <TriSelect value={form.prepay_accepted}
+                onChange={v => setForm({ ...form, prepay_accepted: v })} />
+            </Field>
+
+            <Field label="Transition (TP explained / objections)">
+              <TriSelect value={form.transition_completed}
+                onChange={v => setForm({ ...form, transition_completed: v })} />
+            </Field>
+
+            <Field label="Notes (if not booked all appts, why?)" full>
+              <textarea value={form.notes}
+                onChange={e => setForm({ ...form, notes: e.target.value })}
+                rows={2}
+                placeholder="Anything worth noting…"
+                style={{ ...inputStyle, resize: 'vertical', minHeight: 38 }} />
+            </Field>
+          </div>
+
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button onClick={onSubmit} disabled={saving} style={primaryBtnStyle}>
+              {saving ? 'Saving…' : editingId ? 'Update entry' : 'Add entry'}
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div style={{
+          background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '12px 16px', background: '#f9fafb', borderBottom: `1px solid ${BORDER}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            flexWrap: 'wrap',
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>
+              {user.role === 'CLINICIAN'
+                ? 'My entries'
+                : isFrontDeskGlobal
+                  ? 'Entries — All clinics'
+                  : `Entries — ${user.clinic_id ? CLINIC_LABEL[user.clinic_id as ClinicId] : ''}`}
+              <span style={{ color: TEXT_SOFT, fontWeight: 400, marginLeft: 8 }}>
+                ({total.toLocaleString()}{search ? ` matching "${search}"` : ''})
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  placeholder="Search patient or notes…"
+                  style={{
+                    ...inputStyle, paddingRight: searchInput ? 26 : 12,
+                    width: 260, fontSize: 12,
+                  }}
+                />
+                {searchInput && (
+                  <button
+                    onClick={() => setSearchInput('')}
+                    title="Clear search"
+                    style={{
+                      position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      color: '#9ca3af', fontSize: 14, padding: 2,
+                    }}
+                  >×</button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {loading ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading…</div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+              No entries yet. Add your first case above.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1300 }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb' }}>
+                    <Th>Date</Th>
+                    {isFrontDeskGlobal && <Th>Clinic</Th>}
+                    <Th>Front of staff</Th>
+                    <Th>Clinician</Th>
+                    <Th>Patient</Th>
+                    <Th align="center">TP</Th>
+                    <Th align="right">Recs</Th>
+                    <Th align="right">Booked</Th>
+                    <Th align="right">Acceptance</Th>
+                    <Th align="center">Prepay off</Th>
+                    <Th align="center">Prepay acc</Th>
+                    <Th align="center">Transition</Th>
+                    <Th>Notes</Th>
+                    <Th align="right">Actions</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.id} style={{ borderTop: `1px solid ${BORDER}` }}>
+                      <Td>{r.date_logged}</Td>
+                      {isFrontDeskGlobal && <Td>{CLINIC_LABEL[r.clinic_id]}</Td>}
+                      <Td>{r.front_staff_name || <Dim>—</Dim>}</Td>
+                      <Td>{r.clinician_name || <Dim>—</Dim>}</Td>
+                      <Td><strong>{r.patient_name}</strong></Td>
+                      <Td align="center"><YnPill v={r.treatment_plan_provided} /></Td>
+                      <Td align="right">{r.case_recommendations}</Td>
+                      <Td align="right">{r.appointments_booked}</Td>
+                      <Td align="right">{r.case_acceptance_pct === null ? <Dim>—</Dim> : `${r.case_acceptance_pct.toFixed(2)}%`}</Td>
+                      <Td align="center"><YnPill v={r.prepay_offered} /></Td>
+                      <Td align="center"><YnPill v={r.prepay_accepted} /></Td>
+                      <Td align="center"><TransitionPill v={r.transition_completed} /></Td>
+                      <Td><span style={{ color: TEXT_SOFT }}>{r.notes || <Dim>—</Dim>}</span></Td>
+                      <Td align="right">
+                        {isEditable(r) ? (
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            <button onClick={() => startEdit(r)} style={smallBtnStyle}>Edit</button>
+                            <button onClick={() => onDelete(r)} style={{ ...smallBtnStyle, color: DANGER, borderColor: '#fecaca' }}>Delete</button>
+                          </div>
+                        ) : <Dim>—</Dim>}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {!loading && total > 0 && (
+            <Pagination
+              total={total}
+              limit={limit}
+              offset={offset}
+              onChange={setOffset}
+              onLimitChange={(n) => { setLimit(n); setOffset(0) }}
+            />
+          )}
+        </div>
+      </div>
+    </AppShell>
+  )
+}
+
+function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 5, gridColumn: full ? '1 / -1' : undefined }}>
+      <span style={{ fontSize: 12, color: TEXT_SOFT, fontWeight: 500 }}>{label}</span>
+      {children}
+    </label>
+  )
+}
+function TriSelect({ value, onChange }: { value: Tri; onChange: (v: Tri) => void }) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value as Tri)} style={inputStyle}>
+      <option value="">—</option>
+      <option value="Y">Yes</option>
+      <option value="N">No</option>
+    </select>
+  )
+}
+function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' | 'center' }) {
+  return (
+    <th style={{
+      padding: '10px 14px', textAlign: align, fontSize: 11, fontWeight: 600,
+      color: TEXT_SOFT, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+    }}>{children}</th>
+  )
+}
+function Td({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' | 'center' }) {
+  return <td style={{ padding: '10px 14px', textAlign: align, color: TEXT, verticalAlign: 'top' }}>{children}</td>
+}
+function Dim({ children }: { children: React.ReactNode }) {
+  return <span style={{ color: '#9ca3af' }}>{children}</span>
+}
+
+function YnPill({ v }: { v: boolean | null }) {
+  if (v === null || v === undefined) return <Dim>—</Dim>
+  const yes = v === true
+  return (
+    <span style={{
+      background:   yes ? '#ecfdf5' : '#fef2f2',
+      color:        yes ? '#065f46' : '#991b1b',
+      border: `1px solid ${yes ? '#a7f3d0' : '#fecaca'}`,
+      padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+    }}>{yes ? 'Y' : 'N'}</span>
+  )
+}
+function TransitionPill({ v }: { v: boolean | null }) {
+  if (v === null || v === undefined) return <Dim>—</Dim>
+  if (v === true) {
+    return (
+      <span style={{
+        background: '#22c55e', color: '#fff',
+        padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+      }}>Done</span>
+    )
+  }
+  return <Dim>No</Dim>
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', border: `1px solid ${BORDER}`,
+  borderRadius: 7, fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+  color: TEXT, boxSizing: 'border-box', background: '#fff',
+}
+const primaryBtnStyle: React.CSSProperties = {
+  background: TEAL, color: '#fff', border: 'none', borderRadius: 7,
+  padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  fontFamily: "'DM Sans', sans-serif",
+}
+const smallBtnStyle: React.CSSProperties = {
+  background: '#fff', color: TEXT, border: `1px solid ${BORDER}`,
+  borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 500,
+  cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+}

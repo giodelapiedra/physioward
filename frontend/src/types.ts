@@ -60,7 +60,120 @@ export interface DashboardData {
   fromCache?: boolean;
 }
 
+// ── Auth / users ───────────────────────────────────────────────
+export type Role = 'ADMIN' | 'CLINICIAN' | 'FRONT_DESK' | 'FRONT_DESK_GLOBAL';
+
+export const ROLE_LABEL: Record<Role, string> = {
+  ADMIN:             'Admin',
+  CLINICIAN:         'Clinician',
+  FRONT_DESK:        'Front Desk',
+  FRONT_DESK_GLOBAL: 'Front Desk (All Clinics)',
+};
+
+/** Roles whose users.clinic_id is NULL (cross-clinic accounts). */
+export const CROSS_CLINIC_ROLES: readonly Role[] = ['ADMIN', 'FRONT_DESK_GLOBAL'];
+export function isCrossClinicRole(role: Role): boolean {
+  return CROSS_CLINIC_ROLES.includes(role);
+}
+
+export type ClinicId = 'newport' | 'narrabeen' | 'brookvale';
+
+export const CLINIC_LABEL: Record<ClinicId, string> = {
+  newport:   'Newport',
+  narrabeen: 'Narrabeen',
+  brookvale: 'Brookvale',
+};
+
 export interface User {
-  email: string;
-  role: string;
+  id:         string;
+  email:      string;
+  role:       Role;
+  full_name:  string | null;
+  clinic_id:  ClinicId | null;
+  is_active:  boolean;
+  created_at: string;
+}
+
+// ── Dropouts ───────────────────────────────────────────────────
+export const DROPOUT_STATUSES = [
+  'Re-scheduled',
+  'Cancelled - not rescheduled',
+  'No Future Bookings',
+  'Completed Treatment Plan',
+] as const;
+export type DropoutStatus = typeof DROPOUT_STATUSES[number];
+
+// Fixed list of front-of-staff names (NOT user accounts). Source: live sheet.
+export const FRONT_STAFF_NAMES = [
+  'Tanya',
+  'Bella',
+  'Sandra',
+  'AM',
+  'Jenny',
+  'Teresa',
+  'Ben',
+  'Other - Physio',
+  'Carolyn',
+  'Vanessa',
+  'Holly',
+  'Tilly',
+] as const;
+export type FrontStaffName = typeof FRONT_STAFF_NAMES[number];
+
+export const DROPOUT_REASONS = [
+  'Sick',
+  'Away',
+  'Work Commitments',
+  'Family',
+  'Financial',
+  'Other',
+  'Discharged',
+  'Early Discharge',
+  'Self Discharge',
+] as const;
+export type DropoutReason = typeof DROPOUT_REASONS[number];
+
+export interface DropoutDTO {
+  id:                          string;
+  clinic_id:                   ClinicId;
+  entered_by:                  string;
+  entered_by_name:             string | null;
+  front_staff_name:            FrontStaffName | null;
+  clinician_id:                string;
+  clinician_name:              string | null;
+  patient_name:                string;
+  date_logged:                 string; // YYYY-MM-DD
+  /** All recorded cancellation dates (may be empty). YYYY-MM-DD strings. */
+  appointment_cancelled_dates: string[];
+  // Nullable for legacy 2026 import rows that had blank Status/Reason in the
+  // source spreadsheet. The entry form still requires both for new entries.
+  status:                      DropoutStatus | null;
+  reason:                      DropoutReason | null;
+  notes:                       string | null;
+  created_at:                  string;
+  updated_at:                  string;
+}
+
+// ── Case Recommendation & Acceptance ───────────────────────────
+export interface CaseAcceptanceDTO {
+  id:                       string;
+  clinic_id:                ClinicId;
+  entered_by:               string;
+  entered_by_name:          string | null;
+  front_staff_name:         FrontStaffName | null;
+  clinician_id:             string;
+  clinician_name:           string | null;
+  patient_name:             string;
+  date_logged:              string; // YYYY-MM-DD
+  treatment_plan_provided:  boolean | null;
+  case_recommendations:     number;
+  appointments_booked:      number;
+  /** booked / recommendations × 100 — null when recommendations === 0. */
+  case_acceptance_pct:      number | null;
+  prepay_offered:           boolean | null;
+  prepay_accepted:          boolean | null;
+  transition_completed:     boolean | null;
+  notes:                    string | null;
+  created_at:               string;
+  updated_at:               string;
 }

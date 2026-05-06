@@ -15,8 +15,14 @@ export async function seedInitialUser(): Promise<void> {
   }
 
   const hash = await authService.hashPassword(env.CEO_PASSWORD);
-  await userRepository.create(env.CEO_EMAIL, hash, 'CEO');
-  console.log(`[db] seeded CEO user: ${env.CEO_EMAIL}`);
+  await userRepository.create({
+    email:        env.CEO_EMAIL,
+    passwordHash: hash,
+    role:         'ADMIN',
+    full_name:    env.CEO_EMAIL.split('@')[0],
+    clinic_id:    null,
+  });
+  console.log(`[db] seeded ADMIN user: ${env.CEO_EMAIL}`);
 }
 
 if (require.main === module) {
