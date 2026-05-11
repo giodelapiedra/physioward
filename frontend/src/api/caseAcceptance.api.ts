@@ -79,4 +79,30 @@ export const caseAcceptanceApi = {
 
   remove: (id: string): Promise<void> =>
     api.delete(`/api/case-acceptance/${id}`).then(() => {}),
+
+  /**
+   * Downloads an XLSX of the filtered set. Uses axios with responseType=blob
+   * so the auth header / refresh interceptor still runs; the file is offered
+   * to the browser via a synthetic <a download> click.
+   */
+  exportXlsx: async (filters: Omit<ListCaseAcceptanceFilters, 'limit' | 'offset'> = {}): Promise<void> => {
+    const res = await api.get('/api/case-acceptance/export', {
+      params:       filters,
+      responseType: 'blob',
+    });
+    const blob = new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href    = url;
+    // Pull filename from Content-Disposition if the server provided one.
+    const cd = res.headers['content-disposition'] as string | undefined;
+    const m  = cd?.match(/filename="?([^"]+)"?/i);
+    a.download = m?.[1] ?? 'case-acceptance.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };

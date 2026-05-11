@@ -5,6 +5,7 @@ import AppShell from '../shared/AppShell'
 import Pagination from '../shared/Pagination'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import DateRangePicker from '../shared/DateRangePicker'
+import { toast } from '../../store/toast.store'
 
 const TEAL      = '#0f6e56'
 const TEXT      = '#111827'
@@ -45,6 +46,7 @@ export default function CaseAcceptanceAdminPage() {
 
   const [limit,  setLimit]  = useState(50)
   const [offset, setOffset] = useState(0)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => { setOffset(0) }, [tab, dateFrom, dateTo, tpFilter, search, limit])
 
@@ -69,6 +71,17 @@ export default function CaseAcceptanceAdminPage() {
   }, [tab, dateFrom, dateTo, tpFilter, search, limit, offset])
 
   useEffect(() => { load() }, [load])
+
+  const onExport = async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      await caseAcceptanceApi.exportXlsx(filterParams)
+      toast.success('Export downloaded')
+    } catch (e: any) {
+      toast.error(e.response?.data?.error?.message || 'Export failed')
+    } finally { setExporting(false) }
+  }
 
   const [summary, setSummary] = useState<CaseAcceptanceSummary>({
     total: 0, totalRecommendations: 0, totalBooked: 0, caseAcceptancePct: null,
@@ -150,6 +163,24 @@ export default function CaseAcceptanceAdminPage() {
               <option value="N">No</option>
             </select>
           </Field>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+            <button
+              onClick={onExport}
+              disabled={exporting || loading || total === 0}
+              title={total === 0 ? 'No entries to export' : 'Download XLSX with current filters'}
+              style={{
+                background:   exporting || loading || total === 0 ? '#f3f4f6' : TEAL,
+                color:        exporting || loading || total === 0 ? TEXT_SOFT : '#fff',
+                border:       `1px solid ${exporting || loading || total === 0 ? BORDER : TEAL}`,
+                borderRadius: 7,
+                padding:      '8px 16px',
+                fontSize:     13,
+                fontWeight:   600,
+                fontFamily:   "'DM Sans', sans-serif",
+                cursor:       exporting || loading || total === 0 ? 'not-allowed' : 'pointer',
+              }}
+            >{exporting ? 'Exporting…' : '↓ Export XLSX'}</button>
+          </div>
         </div>
 
         {error && (

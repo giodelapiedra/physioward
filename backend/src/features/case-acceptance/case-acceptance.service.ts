@@ -51,6 +51,30 @@ export const caseAcceptanceService = {
     return caseAcceptanceRepository.aggregate(scope, filters);
   },
 
+  /**
+   * Like list() but unpaginated — used by the XLSX export endpoint to dump
+   * the entire filtered set at once. Pages through the repo (which caps at
+   * PAGE_LIMIT_MAX per call) and stops when nothing more comes back.
+   * HARD_CAP guards against an unbounded scope filter.
+   */
+  async listAll(scope: RequestScope, filters: ListFilters): Promise<CaseAcceptanceDTO[]> {
+    const HARD_CAP = 25_000;
+    const out: CaseAcceptanceDTO[] = [];
+    let offset = 0;
+    for (;;) {
+      const page = await caseAcceptanceRepository.list(scope, {
+        ...filters,
+        limit:  PAGE_LIMIT_MAX,
+        offset,
+      });
+      out.push(...page);
+      if (page.length < PAGE_LIMIT_MAX) break;
+      offset += page.length;
+      if (out.length >= HARD_CAP) break;
+    }
+    return out;
+  },
+
   async get(scope: RequestScope, id: string): Promise<CaseAcceptanceDTO> {
     const row = await caseAcceptanceRepository.findById(scope, id);
     if (!row) throw Errors.notFound(`Case acceptance ${id} not found`);

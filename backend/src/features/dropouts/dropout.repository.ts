@@ -49,10 +49,16 @@ interface DropoutJoinedRow extends DropoutRow {
   clinician_name:   string | null;
 }
 
-function isoDateOnly(d: Date | null | undefined): string | null {
+function isoDateOnly(d: Date | string | null | undefined): string | null {
   if (!d) return null;
-  // Postgres DATE → JS Date at UTC midnight; format as YYYY-MM-DD without TZ shift.
-  return d.toISOString().slice(0, 10);
+  // pg returns a DATE column as a JS Date at LOCAL midnight (TZ-aware), so
+  // toISOString() shifts to UTC and lands on the previous day in any TZ east
+  // of UTC. Use the Date's local components to keep the stored calendar day.
+  if (typeof d === 'string') return d.slice(0, 10);
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 function toDTO(row: DropoutJoinedRow): DropoutDTO {
@@ -304,7 +310,7 @@ export const dropoutRepository = {
       byReason: toMap(reasonRes.rows, 'reason'),
       byClinic: toMap(clinicRes.rows, 'clinic_id'),
       byDay:    dayRes.rows.map((r) => ({
-        date:  r.day.toISOString().slice(0, 10),
+        date:  isoDateOnly(r.day) ?? '',
         count: Number(r.n),
       })),
     };

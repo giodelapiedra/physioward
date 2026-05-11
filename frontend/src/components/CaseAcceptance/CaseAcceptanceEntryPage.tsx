@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   caseAcceptanceApi,
   CreateCaseAcceptancePayload, UpdateCaseAcceptancePayload,
+  CaseAcceptanceSummary,
 } from '../../api/caseAcceptance.api'
 import { usersApi } from '../../api/users.api'
 import {
@@ -16,7 +17,27 @@ import { toast } from '../../store/toast.store'
 import { confirmDialog } from '../../store/confirm.store'
 import AppShell from '../shared/AppShell'
 import Pagination from '../shared/Pagination'
+import DateRangePicker, { DateRangeValue } from '../shared/DateRangePicker'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+
+// Default filter — last 30 days, persisted to localStorage so the user's
+// last pick survives reload.
+const FILTER_STORAGE_KEY = 'pw:case-acceptance:filter'
+function defaultDateRange(): DateRangeValue {
+  const to   = new Date()
+  const from = new Date(); from.setDate(from.getDate() - 29)
+  const iso  = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  return { from: iso(from), to: iso(to) }
+}
+function loadPersistedRange(): DateRangeValue {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (!raw) return defaultDateRange()
+    const parsed = JSON.parse(raw)
+    if (typeof parsed?.from === 'string' && typeof parsed?.to === 'string') return parsed
+  } catch { /* fall through */ }
+  return defaultDateRange()
+}
 
 const TEAL      = '#0f6e56'
 const TEXT      = '#111827'
@@ -96,7 +117,22 @@ export default function CaseAcceptanceEntryPage() {
   const [searchInput, setSearchInput] = useState('')
   const search = useDebouncedValue(searchInput.trim(), 300)
 
-  useEffect(() => { setOffset(0) }, [search, limit])
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => loadPersistedRange())
+  useEffect(() => {
+    try { localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(dateRange)) } catch { /* quota or private mode — ignore */ }
+  }, [dateRange])
+
+  const [summary, setSummary] = useState<CaseAcceptanceSummary | null>(null)
+  const [exporting, setExporting] = useState(false)
+
+  useEffect(() => { setOffset(0) }, [search, limit, dateRange])
+
+  // Filter object reused across list / summary / export — keeps the table,
+  // cards, and downloaded file always agreeing.
+  const filter = useMemo(() => ({
+    date_from: dateRange.from,
+    date_to:   dateRange.to,
+  }), [dateRange])
 
   const [clinicians, setClinicians] = useState<User[]>([])
 
@@ -107,18 +143,40 @@ export default function CaseAcceptanceEntryPage() {
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const res = await caseAcceptanceApi.list({
-        limit, offset,
-        search: search || undefined,
-      })
-      setRows(res.data)
-      setTotal(res.pagination.total)
+      const [listRes, summaryRes] = await Promise.all([
+        caseAcceptanceApi.list({
+          ...filter,
+          limit, offset,
+          search: search || undefined,
+        }),
+        caseAcceptanceApi.summary({
+          ...filter,
+          search: search || undefined,
+        }),
+      ])
+      setRows(listRes.data)
+      setTotal(listRes.pagination.total)
+      setSummary(summaryRes)
     } catch (e: any) {
       setError(e.response?.data?.error?.message || 'Failed to load entries')
     } finally { setLoading(false) }
-  }, [limit, offset, search])
+  }, [filter, limit, offset, search])
 
   useEffect(() => { load() }, [load])
+
+  const onExport = async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      await caseAcceptanceApi.exportXlsx({
+        ...filter,
+        search: search || undefined,
+      })
+      toast.success('Export downloaded')
+    } catch (e: any) {
+      toast.error(e.response?.data?.error?.message || 'Export failed')
+    } finally { setExporting(false) }
+  }
 
   // Pinned-clinic users (FRONT_DESK / CLINICIAN) load clinicians from their
   // own clinic; FRONT_DESK_GLOBAL loads from whichever clinic they pick.
@@ -384,6 +442,9 @@ export default function CaseAcceptanceEntryPage() {
           </div>
         </div>
 
+        {/* Summary cards — always visible, scoped to the active filter */}
+        <SummaryCards summary={summary} />
+
         {/* Table */}
         <div style={{
           background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10,
@@ -404,7 +465,8 @@ export default function CaseAcceptanceEntryPage() {
                 ({total.toLocaleString()}{search ? ` matching "${search}"` : ''})
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <DateRangePicker value={dateRange} onChange={setDateRange} />
               <div style={{ position: 'relative' }}>
                 <input
                   type="text"
@@ -428,6 +490,19 @@ export default function CaseAcceptanceEntryPage() {
                   >×</button>
                 )}
               </div>
+              <button
+                onClick={onExport}
+                disabled={exporting || loading || total === 0}
+                title={total === 0 ? 'No entries to export' : 'Download XLSX of current filter'}
+                style={{
+                  ...smallBtnStyle,
+                  padding: '8px 14px', fontSize: 12, fontWeight: 600,
+                  background: exporting || loading || total === 0 ? '#f3f4f6' : TEAL,
+                  color: exporting || loading || total === 0 ? TEXT_SOFT : '#fff',
+                  borderColor: exporting || loading || total === 0 ? BORDER : TEAL,
+                  cursor: exporting || loading || total === 0 ? 'not-allowed' : 'pointer',
+                }}
+              >{exporting ? 'Exporting…' : '↓ Export XLSX'}</button>
             </div>
           </div>
 
@@ -501,6 +576,66 @@ export default function CaseAcceptanceEntryPage() {
         </div>
       </div>
     </AppShell>
+  )
+}
+
+function SummaryCards({ summary }: { summary: CaseAcceptanceSummary | null }) {
+  // While the first load is in flight, render placeholder shapes so the
+  // layout doesn't jump when numbers arrive.
+  const loaded = summary !== null
+  const cards: { label: string; value: string; sub?: string }[] = loaded ? [
+    {
+      label: 'Entries',
+      value: summary!.total.toLocaleString(),
+      sub:   `${summary!.tpProvided} TP yes · ${summary!.tpNotProvided} TP no`,
+    },
+    {
+      label: 'Case acceptance',
+      value: summary!.caseAcceptancePct === null ? '—' : `${summary!.caseAcceptancePct.toFixed(2)}%`,
+      sub:   `${summary!.totalBooked.toLocaleString()} / ${summary!.totalRecommendations.toLocaleString()}`,
+    },
+    {
+      label: 'Prepay offered',
+      value: summary!.prepayOffered.toLocaleString(),
+      sub:   summary!.total > 0
+              ? `${((summary!.prepayOffered / summary!.total) * 100).toFixed(0)}% of entries`
+              : '—',
+    },
+    {
+      label: 'Prepay accepted',
+      value: summary!.prepayAccepted.toLocaleString(),
+      sub:   summary!.prepayOffered > 0
+              ? `${((summary!.prepayAccepted / summary!.prepayOffered) * 100).toFixed(0)}% of offered`
+              : 'No offers yet',
+    },
+  ] : [
+    { label: 'Entries',         value: '—' },
+    { label: 'Case acceptance', value: '—' },
+    { label: 'Prepay offered',  value: '—' },
+    { label: 'Prepay accepted', value: '—' },
+  ]
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12,
+      marginBottom: 16,
+    }}>
+      {cards.map((c) => (
+        <div key={c.label} style={{
+          background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10,
+          padding: '14px 18px',
+        }}>
+          <div style={{ fontSize: 11, color: TEXT_SOFT, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            {c.label}
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: TEXT, marginTop: 4, fontFamily: "'DM Sans', sans-serif" }}>
+            {c.value}
+          </div>
+          {c.sub && (
+            <div style={{ fontSize: 12, color: TEXT_SOFT, marginTop: 2 }}>{c.sub}</div>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }
 
