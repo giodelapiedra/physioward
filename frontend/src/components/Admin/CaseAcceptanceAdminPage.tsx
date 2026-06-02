@@ -192,28 +192,34 @@ export default function CaseAcceptanceAdminPage() {
 
         {/* Summary strip */}
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10,
+          display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10,
           marginBottom: 16,
         }}>
           <SummaryCard label="Entries" value={summary.total} highlight />
           <SummaryCard
-            label="Case acceptance"
+            label="Recs"
+            value={summary.totalRecommendations}
+          />
+          <SummaryCard
+            label="Booked"
+            value={summary.totalBooked}
+          />
+          <SummaryCard
+            label="Acceptance"
             value={summary.caseAcceptancePct === null ? '—' : `${summary.caseAcceptancePct.toFixed(1)}%`}
-            sub={`${summary.totalBooked} / ${summary.totalRecommendations} booked`}
           />
           <SummaryCard
-            label="TP provided"
-            value={summary.tpProvided}
-            sub={summary.total > 0 ? `${pct(summary.tpProvided, summary.total)}% of entries` : ''}
+            label="Prepay off"
+            value={summary.prepayOffered}
+            sub={summary.total > 0 ? `${pct(summary.prepayOffered, summary.total)}% of entries` : ''}
           />
           <SummaryCard
-            label="Prepay accepted"
+            label="Prepay acc"
             value={summary.prepayAccepted}
             sub={summary.prepayOffered > 0
               ? `${pct(summary.prepayAccepted, summary.prepayOffered)}% of offers`
               : 'no offers'}
           />
-          <SummaryCard label="Transitions" value={summary.transitions} />
         </div>
 
         {/* Table */}
