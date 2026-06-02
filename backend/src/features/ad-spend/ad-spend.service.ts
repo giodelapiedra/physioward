@@ -6,6 +6,7 @@ import { RequestScope } from '../../middleware/auth.middleware';
 import { Errors } from '../../shared/errors';
 import { CreateAdSpendBody, UpdateAdSpendBody } from './ad-spend.validators';
 import { fetchGoogleAdsSpend } from '../../services/google-ads.service';
+import { fetchFacebookAdsSpend } from '../../services/facebook-ads.service';
 import { query } from '../../db/pool';
 
 export interface PagedAdSpend {
@@ -124,6 +125,46 @@ export const adSpendService = {
       }
     }
     await adSpendRepository.delete(id);
+  },
+
+  async syncFacebookAds(
+    dateFrom: string,
+    dateTo:   string
+  ): Promise<{ inserted: number; dates: string[] }> {
+    const { rows: userRows } = await query<{ id: string }>(
+      `SELECT id FROM users WHERE role = 'ADSPEND' LIMIT 1`
+    );
+    if (!userRows[0]) {
+      throw Errors.internal('ADSPEND user not found — run db:seed:adspend first');
+    }
+    const systemUserId = userRows[0].id;
+
+    const rows = await fetchFacebookAdsSpend(dateFrom, dateTo);
+    if (rows.length === 0) return { inserted: 0, dates: [] };
+
+    const dates = [...new Set(rows.map(r => r.spend_date))];
+
+    await query(
+      `DELETE FROM ad_spend
+        WHERE channel = 'Facebook'
+          AND spend_date = ANY($1::date[])
+          AND entered_by = $2
+          AND notes = 'Auto-synced from Facebook Ads'`,
+      [dates, systemUserId]
+    );
+
+    for (const row of rows) {
+      await adSpendRepository.create({
+        entered_by:    systemUserId,
+        spend_date:    row.spend_date,
+        channel:       'Facebook',
+        campaign_name: row.campaign_name,
+        amount:        row.amount,
+        notes:         'Auto-synced from Facebook Ads',
+      });
+    }
+
+    return { inserted: rows.length, dates };
   },
 
   async syncGoogleAds(

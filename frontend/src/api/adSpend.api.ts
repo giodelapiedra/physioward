@@ -70,4 +70,7 @@ export const adSpendApi = {
 
   syncGoogle: (dateFrom: string, dateTo: string): Promise<{ inserted: number; dates: string[]; message?: string }> =>
     api.post('/api/ad-spend/sync-google', null, { params: { date_from: dateFrom, date_to: dateTo } }).then(r => r.data),
+
+  syncFacebook: (dateFrom: string, dateTo: string): Promise<{ inserted: number; dates: string[]; message?: string }> =>
+    api.post('/api/ad-spend/sync-facebook', null, { params: { date_from: dateFrom, date_to: dateTo } }).then(r => r.data),
 };

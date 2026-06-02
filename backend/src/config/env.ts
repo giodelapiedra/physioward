@@ -37,6 +37,10 @@ const EnvSchema = z.object({
   GOOGLE_ADS_CUSTOMER_ID:     z.string().min(1).optional(),
   GOOGLE_ADS_MANAGER_ID:      z.string().min(1).optional(),
 
+  // ── Facebook Ads API (optional — sync disabled when absent) ─────────────
+  FACEBOOK_ADS_ACCESS_TOKEN: z.string().min(1).optional(),
+  FACEBOOK_ADS_ACCOUNT_ID:   z.string().min(1).optional(),
+
   // ── Google Sheets API (import scripts only — optional in production) ─────
   GOOGLE_SHEETS_REFRESH_TOKEN:   z.string().min(1).optional(),
   GOOGLE_SHEETS_CLIENT_ID:       z.string().min(1).optional(),

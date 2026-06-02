@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer,
   AreaChart, Area,
+  BarChart, Bar,
   LineChart, Line,
   PieChart, Pie, Cell,
   XAxis, YAxis,
@@ -10,6 +11,7 @@ import {
   Legend,
 } from 'recharts'
 import { dashboardApi } from '../../api/dashboard.api'
+import { adSpendApi, WeeklyReportRow } from '../../api/adSpend.api'
 import { DashboardData, WeekMetrics, MonthlyTotals } from '../../types'
 import AppShell from '../shared/AppShell'
 
@@ -58,15 +60,27 @@ export default function CEOAnalyticsPage() {
   const [clinic, setClinic] = useState('newport')
   const [month,  setMonth]  = useState(now.getMonth() + 1)
   const [year,   setYear]   = useState(now.getFullYear())
-  const [data,    setData]    = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState<string | null>(null)
+  const [data,      setData]      = useState<DashboardData | null>(null)
+  const [adSpend,   setAdSpend]   = useState<WeeklyReportRow[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true); setError(null)
-    dashboardApi.getMonthly(clinic, month, year)
-      .then((r) => { if (!cancelled) setData(r) })
+
+    // Date range for the selected month
+    const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`
+    const lastDay  = new Date(year, month, 0).getDate()
+    const dateTo   = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+    Promise.all([
+      dashboardApi.getMonthly(clinic, month, year),
+      adSpendApi.weeklyReport(dateFrom, dateTo).catch(() => [] as WeeklyReportRow[]),
+    ])
+      .then(([dash, spend]) => {
+        if (!cancelled) { setData(dash); setAdSpend(spend) }
+      })
       .catch((e: any) => { if (!cancelled) setError(e?.response?.data?.error?.message || e?.response?.data?.error || 'Failed to load') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -169,7 +183,7 @@ export default function CEOAnalyticsPage() {
 
         {loading || !data
           ? <SkeletonState />
-          : <Analytics data={data} />}
+          : <Analytics data={data} adSpend={adSpend} />}
       </div>
     </AppShell>
   )
@@ -177,7 +191,7 @@ export default function CEOAnalyticsPage() {
 
 // ── Body ────────────────────────────────────────────────────────────────
 
-function Analytics({ data }: { data: DashboardData }) {
+function Analytics({ data, adSpend }: { data: DashboardData; adSpend: WeeklyReportRow[] }) {
   const weeks = data.weeks
   const m     = data.monthly
 
@@ -319,6 +333,22 @@ function Analytics({ data }: { data: DashboardData }) {
           <MiniStat label="Active patients"       value={m.activePatients} />
         </div>
       </Panel>
+
+      {/* ── Ad Spend ── */}
+      {adSpend.length > 0 && (
+        <Panel>
+          <PanelHeader
+            title="Ad spend"
+            subtitle="Weekly Facebook + Google spend (AUD)"
+            kpis={[
+              { label: 'Facebook', value: fmtCurrencyShort(adSpend.reduce((s, w) => s + (w.byChannel['Facebook'] ?? 0), 0)) },
+              { label: 'Google',   value: fmtCurrencyShort(adSpend.reduce((s, w) => s + (w.byChannel['Google']   ?? 0), 0)) },
+              { label: 'Total',    value: fmtCurrencyShort(adSpend.reduce((s, w) => s + w.total, 0)) },
+            ]}
+          />
+          <AdSpendChart data={adSpend} />
+        </Panel>
+      )}
     </div>
   )
 }
@@ -708,6 +738,73 @@ function RatesTooltip({ active, payload, label }: any) {
             }}>{p.value == null ? '—' : `${p.value.toFixed(1)}%`}</span>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Ad Spend chart ─────────────────────────────────────────────────────
+
+function AdSpendChart({ data }: { data: WeeklyReportRow[] }) {
+  const chartData = data.map((w) => ({
+    week:      `${w.week_start.slice(5)}→${w.week_end.slice(5)}`,
+    Facebook:  +(w.byChannel['Facebook'] ?? 0).toFixed(2),
+    Google:    +(w.byChannel['Google']   ?? 0).toFixed(2),
+    Total:     +w.total.toFixed(2),
+  }))
+
+  return (
+    <div style={{ width: '100%', height: 260 }}>
+      <ResponsiveContainer>
+        <BarChart data={chartData} margin={{ top: 12, right: 12, bottom: 4, left: 4 }} barGap={4}>
+          <CartesianGrid stroke="#f1f3f6" strokeDasharray="2 4" vertical={false} />
+          <XAxis
+            dataKey="week"
+            tick={{ fill: TEXT_MUTED, fontSize: 11, fontFamily: "'DM Sans', sans-serif" }}
+            tickLine={false}
+            axisLine={{ stroke: BORDER }}
+          />
+          <YAxis
+            tickFormatter={(v) => fmtCurrencyShort(v)}
+            tick={{ fill: TEXT_MUTED, fontSize: 10, fontFamily: "'DM Mono', monospace" }}
+            tickLine={false}
+            axisLine={false}
+            width={56}
+          />
+          <Tooltip content={<AdSpendTooltip />} cursor={{ fill: 'rgba(15,110,86,0.04)' }} />
+          <Bar dataKey="Facebook" fill="#1877f2" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={500} />
+          <Bar dataKey="Google"   fill="#ea4335" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={500} />
+          <Legend
+            verticalAlign="bottom" height={28}
+            iconType="circle" iconSize={8}
+            wrapperStyle={{ fontSize: 11, fontFamily: "'DM Sans', sans-serif", color: TEXT_SOFT, paddingTop: 4 }}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function AdSpendTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null
+  const total = payload.reduce((s: number, p: any) => s + (p.value ?? 0), 0)
+  return (
+    <div style={tooltipStyle}>
+      <div style={{ opacity: 0.7, fontSize: 10, marginBottom: 6, fontWeight: 500 }}>{label}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {payload.map((p: any) => (
+          <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color, flex: '0 0 auto' }} />
+            <span style={{ opacity: 0.85, minWidth: 64 }}>{p.dataKey}</span>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, marginLeft: 'auto' }}>
+              {fmtCurrencyShort(p.value)}
+            </span>
+          </div>
+        ))}
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.15)', marginTop: 4, paddingTop: 4, display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+          <span style={{ opacity: 0.7 }}>Total</span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: TEAL_LIGHT }}>{fmtCurrencyShort(total)}</span>
+        </div>
       </div>
     </div>
   )

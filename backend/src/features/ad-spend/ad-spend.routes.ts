@@ -16,6 +16,20 @@ const router = Router();
 router.use(authMiddleware);
 router.use(requireRole('ADSPEND', 'ADMIN'));
 
+// POST /api/ad-spend/sync-facebook?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+router.post('/sync-facebook', requireRole('ADMIN'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { date_from, date_to } = req.query as { date_from?: string; date_to?: string };
+    if (!date_from || !date_to) {
+      res.status(400).json({ error: { message: 'date_from and date_to are required' } });
+      return;
+    }
+    const result = await adSpendService.syncFacebookAds(date_from, date_to);
+    await audit(req.scope!.userId, 'ad_spend.sync_facebook', { date_from, date_to, inserted: result.inserted });
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
 // POST /api/ad-spend/sync-google?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
 // ADMIN only — pulls spend from Google Ads API and upserts into ad_spend table.
 router.post('/sync-google', requireRole('ADMIN'), async (req: AuthRequest, res: Response, next: NextFunction) => {
