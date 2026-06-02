@@ -741,24 +741,52 @@ export default function AdSpendEntryPage() {
 function SummaryCards({ summary }: { summary: AdSpendSummary | null }) {
   const loaded = summary !== null
   const topCh = loaded ? Object.entries(summary!.byChannel).sort((a,b) => b[1]-a[1])[0] : undefined
-  const cards = loaded ? [
-    { label:'Total Spend',    value: AUD.format(summary!.totalAmount), sub:`${summary!.total} entries` },
-    { label:'Top Channel',    value: topCh?.[0] ?? '—', sub: topCh ? AUD.format(topCh[1]) : undefined },
-    { label:'Channels Used',  value: String(Object.keys(summary!.byChannel).length) },
-  ] : [
-    { label:'Total Spend', value:'—' },
-    { label:'Top Channel', value:'—' },
-    { label:'Channels Used', value:'—' },
-  ]
+  const channelEntries = loaded
+    ? Object.entries(summary!.byChannel).sort((a,b) => b[1]-a[1])
+    : []
+
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:16 }}>
-      {cards.map(c => (
-        <div key={c.label} style={{ background:'#fff', border:`1px solid ${BORDER}`, borderRadius:10, padding:'14px 18px' }}>
-          <div style={{ fontSize:11, color:TEXT_SOFT, fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase' }}>{c.label}</div>
-          <div style={{ fontSize:22, fontWeight:700, color:TEXT, marginTop:4, fontFamily:"'DM Sans',sans-serif" }}>{c.value}</div>
-          {c.sub && <div style={{ fontSize:12, color:TEXT_SOFT, marginTop:2 }}>{c.sub}</div>}
+      {/* Total Spend */}
+      <div style={{ background:'#fff', border:`1px solid ${BORDER}`, borderRadius:10, padding:'14px 18px' }}>
+        <div style={{ fontSize:11, color:TEXT_SOFT, fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase' }}>Total Spend</div>
+        <div style={{ fontSize:22, fontWeight:700, color:TEXT, marginTop:4, fontFamily:"'DM Sans',sans-serif" }}>
+          {loaded ? AUD.format(summary!.totalAmount) : '—'}
         </div>
-      ))}
+        {loaded && <div style={{ fontSize:12, color:TEXT_SOFT, marginTop:2 }}>{summary!.total} entries</div>}
+      </div>
+
+      {/* Top Channel */}
+      <div style={{ background:'#fff', border:`1px solid ${BORDER}`, borderRadius:10, padding:'14px 18px' }}>
+        <div style={{ fontSize:11, color:TEXT_SOFT, fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase' }}>Top Channel</div>
+        <div style={{ fontSize:22, fontWeight:700, color:TEXT, marginTop:4, fontFamily:"'DM Sans',sans-serif" }}>
+          {topCh?.[0] ?? '—'}
+        </div>
+        {topCh && <div style={{ fontSize:12, color:TEXT_SOFT, marginTop:2 }}>{AUD.format(topCh[1])}</div>}
+      </div>
+
+      {/* Channels Used — with per-channel breakdown */}
+      <div style={{ background:'#fff', border:`1px solid ${BORDER}`, borderRadius:10, padding:'14px 18px' }}>
+        <div style={{ fontSize:11, color:TEXT_SOFT, fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase' }}>Channels Used</div>
+        <div style={{ fontSize:22, fontWeight:700, color:TEXT, marginTop:4, fontFamily:"'DM Sans',sans-serif" }}>
+          {loaded ? channelEntries.length : '—'}
+        </div>
+        {channelEntries.length > 0 && (
+          <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
+            {channelEntries.map(([ch, amt]) => (
+              <div key={ch} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:11, fontWeight:600, color:
+                  ch === 'Facebook' ? '#1877f2' :
+                  ch === 'Google'   ? '#ea4335' : TEXT_SOFT
+                }}>{ch}</span>
+                <span style={{ fontSize:12, fontWeight:700, color:TEXT, fontFamily:"'DM Mono',monospace" }}>
+                  {AUD.format(amt)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
