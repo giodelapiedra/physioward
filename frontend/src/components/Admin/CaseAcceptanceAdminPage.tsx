@@ -199,14 +199,17 @@ export default function CaseAcceptanceAdminPage() {
           <SummaryCard
             label="Recs"
             value={summary.totalRecommendations}
+            sub={summary.total > 0 ? `${(summary.totalRecommendations / summary.total).toFixed(1)} avg per entry` : ''}
           />
           <SummaryCard
             label="Booked"
             value={summary.totalBooked}
+            sub={summary.caseAcceptancePct !== null ? `${summary.caseAcceptancePct.toFixed(1)}% acceptance` : ''}
           />
           <SummaryCard
             label="Acceptance"
             value={summary.caseAcceptancePct === null ? '—' : `${summary.caseAcceptancePct.toFixed(1)}%`}
+            sub={`${summary.totalBooked} / ${summary.totalRecommendations}`}
           />
           <SummaryCard
             label="Prepay off"
