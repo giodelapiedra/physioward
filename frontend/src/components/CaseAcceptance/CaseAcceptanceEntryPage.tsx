@@ -558,8 +558,8 @@ export default function CaseAcceptanceEntryPage() {
                     <Th align="right">Recs</Th>
                     <Th align="right">Booked</Th>
                     <Th align="right">Acceptance</Th>
-                    <Th align="center">Prepay off</Th>
-                    <Th align="center">Prepay acc</Th>
+                    <Th align="center">Prepay offered</Th>
+                    <Th align="center">Prepay accepted</Th>
                     <Th>Transition notes</Th>
                     <Th>Notes</Th>
                     <Th align="right">Actions</Th>

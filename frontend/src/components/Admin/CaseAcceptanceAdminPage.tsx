@@ -199,7 +199,6 @@ export default function CaseAcceptanceAdminPage() {
           <SummaryCard
             label="Recs"
             value={summary.totalRecommendations}
-            sub={summary.total > 0 ? `${(summary.totalRecommendations / summary.total).toFixed(1)} avg per entry` : ''}
           />
           <SummaryCard
             label="Booked"
@@ -212,12 +211,12 @@ export default function CaseAcceptanceAdminPage() {
             sub={`${summary.totalBooked} / ${summary.totalRecommendations}`}
           />
           <SummaryCard
-            label="Prepay off"
+            label="Prepay offered"
             value={summary.prepayOffered}
             sub={summary.total > 0 ? `${pct(summary.prepayOffered, summary.total)}% of entries` : ''}
           />
           <SummaryCard
-            label="Prepay acc"
+            label="Prepay accepted"
             value={summary.prepayAccepted}
             sub={summary.prepayOffered > 0
               ? `${pct(summary.prepayAccepted, summary.prepayOffered)}% of offers`
@@ -248,8 +247,8 @@ export default function CaseAcceptanceAdminPage() {
                     <Th align="right">Recs</Th>
                     <Th align="right">Booked</Th>
                     <Th align="right">Acceptance</Th>
-                    <Th align="center">Prepay off</Th>
-                    <Th align="center">Prepay acc</Th>
+                    <Th align="center">Prepay offered</Th>
+                    <Th align="center">Prepay accepted</Th>
                     <Th>Transition notes</Th>
                     <Th>Notes</Th>
                   </tr>
