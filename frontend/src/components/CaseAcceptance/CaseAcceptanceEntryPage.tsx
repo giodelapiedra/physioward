@@ -733,7 +733,7 @@ function YnPill({ v }: { v: boolean | null }) {
       color:        yes ? '#065f46' : '#991b1b',
       border: `1px solid ${yes ? '#a7f3d0' : '#fecaca'}`,
       padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
-    }}>{yes ? 'Y' : 'N'}</span>
+    }}>{yes ? 'YES' : 'NO'}</span>
   )
 }
 
