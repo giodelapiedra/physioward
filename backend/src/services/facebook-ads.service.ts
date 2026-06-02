@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { env } from '../config/env';
 import { Errors } from '../shared/errors';
 
@@ -6,6 +6,22 @@ export interface FacebookAdsDaySpend {
   spend_date:    string; // YYYY-MM-DD
   campaign_name: string;
   amount:        number; // AUD (account currency)
+}
+
+function handleFacebookError(err: unknown): never {
+  if (err instanceof AxiosError) {
+    const fb = err.response?.data?.error;
+    if (fb) {
+      const msg = `Facebook Ads API error (code ${fb.code}): ${fb.message}`;
+      // Token expired / invalid → treat as validation so frontend shows actionable message
+      if (fb.code === 190 || fb.type === 'OAuthException') {
+        throw Errors.validation(`Facebook access token expired or invalid — please refresh it. ${msg}`);
+      }
+      throw Errors.internal(msg);
+    }
+    throw Errors.internal(`Facebook Ads API request failed: ${err.message}`);
+  }
+  throw err;
 }
 
 export async function fetchFacebookAdsSpend(
@@ -31,8 +47,13 @@ export async function fetchFacebookAdsSpend(
       limit:          '500',
     };
 
-    const resp = await axios.get<any>(isFirst ? url : url, isFirst ? { params } : {});
-    const page: any = resp.data;
+    let page: any;
+    try {
+      const resp = await axios.get<any>(url, isFirst ? { params } : {});
+      page = resp.data;
+    } catch (err) {
+      handleFacebookError(err);
+    }
 
     for (const row of (page.data ?? [])) {
       const amount = parseFloat(row.spend ?? '0');
