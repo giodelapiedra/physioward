@@ -199,6 +199,7 @@ export default function CaseAcceptanceAdminPage() {
           <SummaryCard
             label="Recs"
             value={summary.totalRecommendations}
+            sub={summary.totalRecommendations > 0 ? `${pct(summary.totalBooked, summary.totalRecommendations)}% booked` : ''}
           />
           <SummaryCard
             label="Booked"
