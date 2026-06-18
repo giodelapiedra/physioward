@@ -398,7 +398,9 @@ export default function DashboardPage() {
   }, [clinic])
 
   useEffect(() => { fetchData() }, [fetchData])
-  useEffect(() => { fetchAgeingDebts() }, [fetchAgeingDebts])
+  // Ageing Debts is NOT auto-fetched — the 10-year Nookal pagination is slow and
+  // dragged the whole dashboard down. Load it on demand with the "Ageing Debts"
+  // button instead, so the normal dashboard/refresh stays fast.
 
   const currentClinic = CLINIC_LIST.find(c => c.id === clinic)
   const years = [2025, 2026, 2027]
@@ -591,7 +593,7 @@ export default function DashboardPage() {
 
         <button
           className="fetch-btn"
-          onClick={() => { fetchData(true); fetchAgeingDebts(true) }}
+          onClick={() => fetchData(true)}
           disabled={loading}
           style={{
             background: loading ? '#9ca3af' : TEAL,
@@ -615,6 +617,36 @@ export default function DashboardPage() {
               Fetching Nookal...
             </>
           ) : '↻ Refresh'}
+        </button>
+
+        {/* Ageing Debts — manual, on-demand only (slow 10-year Nookal fetch). */}
+        <button
+          onClick={() => fetchAgeingDebts(true)}
+          disabled={ageingLoading}
+          title="Load Ageing Debts — slow, manual only"
+          style={{
+            background: ageingLoading ? '#9ca3af' : '#fff',
+            color: ageingLoading ? '#fff' : TEXT,
+            border: '1px solid #e5e7eb', borderRadius: 7,
+            padding: '8px 16px', fontSize: 13, fontWeight: 500,
+            cursor: ageingLoading ? 'not-allowed' : 'pointer',
+            fontFamily: "'DM Sans', sans-serif",
+            transition: 'all 0.15s',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          {ageingLoading ? (
+            <>
+              <span style={{
+                width: 13, height: 13,
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderTop: '2px solid #fff',
+                borderRadius: '50%', display: 'inline-block',
+                animation: 'spin 0.7s linear infinite',
+              }} />
+              Loading Ageing…
+            </>
+          ) : '💰 Ageing Debts'}
         </button>
 
         <button
