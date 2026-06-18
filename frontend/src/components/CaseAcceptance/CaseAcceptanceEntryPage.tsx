@@ -590,7 +590,7 @@ export default function CaseAcceptanceEntryPage() {
                       <Td align="right">{r.appointments_booked}</Td>
                       <Td align="right">{r.case_acceptance_pct === null ? <Dim>—</Dim> : `${r.case_acceptance_pct.toFixed(2)}%`}</Td>
                       <Td align="center"><YnPill v={r.prepay_offered ?? false} /></Td>
-                      <Td align="center"><YnPill v={r.prepay_accepted} /></Td>
+                      <Td align="center"><YnPill v={r.prepay_accepted ?? false} /></Td>
                       <Td><span style={{ color: TEXT_SOFT }}>{r.transition_notes || <Dim>—</Dim>}</span></Td>
                       <Td><span style={{ color: TEXT_SOFT }}>{r.notes || <Dim>—</Dim>}</span></Td>
                       <Td align="right">
