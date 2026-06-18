@@ -42,6 +42,8 @@ interface ClinicConfig {
   frontStaffAliases: Record<string, string>;
   /** Map sheet clinician text → users.full_name (e.g. "Zac" → "Zach"). */
   clinicianAliases:  Record<string, string>;
+  /** Raw clinician-cell values to skip entirely (non-clinicians, stray entries). */
+  clinicianSkips:    readonly string[];
 }
 
 const CLINIC_CONFIGS: Record<string, ClinicConfig> = {
@@ -50,18 +52,21 @@ const CLINIC_CONFIGS: Record<string, ClinicConfig> = {
     sheetTab:         "'Daily Case Recommendation Tracker'!A:L",
     frontStaffAliases:{ Izzy: 'Isabella' },
     clinicianAliases: {},
+    clinicianSkips:   [],
   },
   narrabeen: {
     sheetId:          '1Qoz-0UXLXH-CvojnReUg3wxwL8rgn3HFcGHBYOi43-w',
     sheetTab:         "'Daily Case Recommendation Tracker'!A:L",
     frontStaffAliases:{},
     clinicianAliases: { Zac: 'Zach' },
+    clinicianSkips:   [],
   },
   brookvale: {
     sheetId:          '1BhEYel_NJlEK46gq-kFqmx87WgCdo0XA5PtnXF4Q4cU',
     sheetTab:         "'Daily Case Recommendation Tracker'!A:L",
     frontStaffAliases:{},
-    clinicianAliases: {},
+    clinicianAliases: { 'Jesse/Angus': 'Angus' },
+    clinicianSkips:   [],
   },
 };
 
@@ -124,12 +129,20 @@ function parseTreatmentPlan(raw: string | null): boolean | null {
   return null;
 }
 
-/** "X", "✔", "✓", "x" → true; blank → null */
+/**
+ * Any "yes" marker → true; blank → null.
+ * Robust to the variants seen across clinic sheets: X/x, TRUE checkbox, YES/Y/1,
+ * and every tick glyph (✓ U+2713, ✔ U+2714, ✅ U+2705, ☑ U+2611, √ U+221A) —
+ * including ones carrying a trailing emoji variation selector (U+FE0F), which a
+ * strict `===` match would miss.
+ */
 function parsePrepay(raw: string | null): boolean | null {
   if (!raw) return null;
   const s = raw.trim();
   if (!s) return null;
-  if (s === 'X' || s === 'x' || s === '✔' || s === '✓') return true;
+  const up = s.toUpperCase();
+  if (up === 'X' || up === 'TRUE' || up === 'YES' || up === 'Y' || up === '1') return true;
+  if (/[✓✔✅☑√]/.test(s)) return true;
   return null;
 }
 
@@ -287,6 +300,7 @@ export async function run(): Promise<void> {
   // Clinician resolution
   const namesInSheet = [...new Set(
     parsed.map(r => r.clinician_raw).filter((s): s is string => !!s)
+      .filter(s => !cfg.clinicianSkips.includes(s))
       .map(s => cfg.clinicianAliases[s] ?? s)
   )];
   console.log(`[ca-gsheets] clinicians: ${namesInSheet.join(', ')}`);
@@ -336,6 +350,9 @@ export async function run(): Promise<void> {
     if (!r.date_logged) { skipped.push({ row: r.rowNum, reason: 'unparseable date' }); continue; }
     if (!r.patient_name){ skipped.push({ row: r.rowNum, reason: 'missing patient' }); continue; }
     if (!r.clinician_raw){ skipped.push({ row: r.rowNum, reason: 'missing clinician' }); continue; }
+    if (cfg.clinicianSkips.includes(r.clinician_raw)) {
+      skipped.push({ row: r.rowNum, reason: `clinician "${r.clinician_raw}" skipped` }); continue;
+    }
 
     const clinKey    = cfg.clinicianAliases[r.clinician_raw] ?? r.clinician_raw;
     const clinicianId = clinicianMap.get(clinKey);

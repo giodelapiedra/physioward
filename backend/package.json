@@ -10,6 +10,7 @@
     "db:seed:front-desk": "ts-node-dev --transpile-only src/db/seed-front-desk.ts",
     "db:seed:adspend": "ts-node-dev --transpile-only src/db/seed-adspend.ts",
     "token:google-ads": "ts-node-dev --transpile-only src/scripts/get-google-ads-token.ts",
+    "token:google-sheets": "ts-node-dev --transpile-only src/scripts/get-google-sheets-token.ts",
     "db:import:dropouts": "ts-node-dev --transpile-only src/db/import-dropouts-2026.ts",
     "db:import:case-acceptance": "ts-node-dev --transpile-only src/db/import-case-acceptance.ts",
     "db:import:dropouts:gsheets": "ts-node-dev --transpile-only src/db/import-dropouts-gsheets.ts",
