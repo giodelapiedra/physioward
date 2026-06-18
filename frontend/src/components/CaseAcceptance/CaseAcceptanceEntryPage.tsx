@@ -658,16 +658,14 @@ function SummaryCards({ summary }: { summary: CaseAcceptanceSummary | null }) {
     {
       label: 'Prepay offered',
       value: summary!.prepayOffered.toLocaleString(),
-      sub:   summary!.total > 0
-               ? `${pct(summary!.prepayOffered, summary!.total)}% of entries`
-               : '—',
+      // pct() returns '0' when the denominator is 0, so show a real 0% (counts
+      // toward averages) instead of a muted dash when there are no entries.
+      sub:   `${pct(summary!.prepayOffered, summary!.total)}% of entries`,
     },
     {
       label: 'Prepay accepted',
       value: summary!.prepayAccepted.toLocaleString(),
-      sub:   summary!.prepayOffered > 0
-               ? `${pct(summary!.prepayAccepted, summary!.prepayOffered)}% of offers`
-               : 'No offers yet',
+      sub:   `${pct(summary!.prepayAccepted, summary!.prepayOffered)}% of offers`,
     },
   ] : [
     { label: 'Entries',          value: '—', highlight: true },

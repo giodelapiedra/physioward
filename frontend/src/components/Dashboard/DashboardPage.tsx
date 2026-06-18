@@ -339,6 +339,8 @@ function DashboardTable({ data, ageingDebts, ageingLoading }: { data: DashboardD
           {nrow('Number of Clients Who Took The Upfront Treatment Plan Option',
             'Number of clients who accepted upfront offer (payment collected) in the last 7 days',
             'upfrontPlanAccepted', 'upfrontPlanAccepted')}
+          {/* TEMPORARILY HIDDEN — not in use yet (per Sam, 2026-06-18).
+              Re-enable by uncommenting this block when ready to use these metrics.
           {nrow('Clients Who Accepted a Product or Upsell',
             'Number of clients who accepted a product or upsell in the last 7 days',
             'productsUpsold', 'productsUpsold')}
@@ -348,6 +350,7 @@ function DashboardTable({ data, ageingDebts, ageingLoading }: { data: DashboardD
             'Total number of active patients in treatment in the last 7 days', 'Avg')}
           {emptyRow('Inactive Patients',
             'Total number of inactive patients not in treatment (all time)', '')}
+          */}
 
         </tbody>
       </table>

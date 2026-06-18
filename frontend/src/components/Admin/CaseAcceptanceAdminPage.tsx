@@ -230,14 +230,14 @@ export default function CaseAcceptanceAdminPage() {
           <SummaryCard
             label="Prepay offered"
             value={summary.prepayOffered}
-            sub={summary.total > 0 ? `${pct(summary.prepayOffered, summary.total)}% of entries` : ''}
+            /* pct() returns '0' on a zero denominator → show a real 0% that
+               counts toward averages, not a blank/dash. */
+            sub={`${pct(summary.prepayOffered, summary.total)}% of entries`}
           />
           <SummaryCard
             label="Prepay accepted"
             value={summary.prepayAccepted}
-            sub={summary.prepayOffered > 0
-              ? `${pct(summary.prepayAccepted, summary.prepayOffered)}% of offers`
-              : 'no offers'}
+            sub={`${pct(summary.prepayAccepted, summary.prepayOffered)}% of offers`}
           />
         </div>
 
