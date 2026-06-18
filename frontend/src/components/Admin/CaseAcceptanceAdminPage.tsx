@@ -282,8 +282,8 @@ export default function CaseAcceptanceAdminPage() {
                       <Td align="right">{r.case_recommendations}</Td>
                       <Td align="right">{r.appointments_booked}</Td>
                       <Td align="right">{r.case_acceptance_pct === null ? <Dim>—</Dim> : `${r.case_acceptance_pct.toFixed(2)}%`}</Td>
-                      <Td align="center"><YnPill v={r.prepay_offered ?? false} /></Td>
-                      <Td align="center"><YnPill v={r.prepay_accepted ?? false} /></Td>
+                      <Td align="center"><PrepayPill v={r.prepay_offered} /></Td>
+                      <Td align="center"><PrepayPill v={r.prepay_accepted} /></Td>
                       <Td><span style={{ color: TEXT_SOFT }}>{r.transition_notes || <Dim>—</Dim>}</span></Td>
                       <Td><span style={{ color: TEXT_SOFT }}>{r.notes || <Dim>—</Dim>}</span></Td>
                     </tr>
@@ -363,6 +363,18 @@ function YnPill({ v }: { v: boolean | null }) {
       padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
     }}>{yes ? 'YES' : 'NO'}</span>
   )
+}
+
+// Prepay columns only: YES (green) when accepted/offered, else a muted "0"
+// (not "NO", not a blank dash) so empty/false rows read as a real zero.
+function PrepayPill({ v }: { v: boolean | null }) {
+  if (v === true) return (
+    <span style={{
+      background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0',
+      padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+    }}>YES</span>
+  )
+  return <Dim>0</Dim>
 }
 
 const inputStyle: React.CSSProperties = {
