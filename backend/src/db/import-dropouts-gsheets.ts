@@ -203,6 +203,7 @@ function parseApptCancelled(raw: string | undefined | null): string[] {
 
   const normalized = text
     .replace(/\(/g, ' ').replace(/\)/g, ' ')
+    .replace(/\.{2,}/g, '.')   // collapse typo double-dots, e.g. "19..03" → "19.03"
     .replace(/\b(?:and|AND|And|DNA|dna)\b/g, ' ');
 
   const tokens = normalized
@@ -541,7 +542,10 @@ export async function run(): Promise<void> {
       clinician_id:                clinicianId,
       patient_name:                r.patient.slice(0, 200),
       date_logged:                 r.date_logged,
-      appointment_cancelled_dates: r.appt_dates,
+      // No parseable cancel date (blank, or free-text like "discharged"/"NA")
+      // → fall back to the entry date: "if blank, the cancel date is when the
+      // row was logged".
+      appointment_cancelled_dates: r.appt_dates.length > 0 ? r.appt_dates : [r.date_logged],
       status,
       reason,
       notes:                       r.notes ? r.notes.slice(0, 2000) : null,
