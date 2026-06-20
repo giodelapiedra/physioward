@@ -168,9 +168,6 @@ export default function CaseAcceptanceEntryPage() {
   }, [isAdmin])
   useEffect(() => { reloadDrafts() }, [reloadDrafts])
 
-  // Form has meaningful content worth saving (differs from a blank form).
-  const isFormDirty = JSON.stringify(form) !== JSON.stringify(emptyForm(user))
-
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
@@ -248,6 +245,10 @@ export default function CaseAcceptanceEntryPage() {
   // Drafts are only for fresh entries — never while editing an existing row.
   const onSaveDraft = async () => {
     setError('')
+    // A draft still needs the core identifying fields — the rest (incl. notes)
+    // may be left for later. Stops an empty/half-blank draft from being saved.
+    if (picksClinic && !form.clinic_id) return setError('Clinic is required')
+    if (!form.patient_name.trim())      return setError('Patient name is required')
     setSavingDraft(true)
     try {
       const meta = {
@@ -560,11 +561,11 @@ export default function CaseAcceptanceEntryPage() {
             {!editingId && (
               <button
                 onClick={onSaveDraft}
-                disabled={savingDraft || saving || !isFormDirty}
-                title={isFormDirty ? 'Save your progress to finish later' : 'Nothing to save yet'}
+                disabled={savingDraft || saving}
+                title="Save your progress — the rest can be added later"
                 style={{
                   ...draftBtnStyle,
-                  ...(savingDraft || saving || !isFormDirty ? disabledBtnStyle : {}),
+                  ...(savingDraft || saving ? disabledBtnStyle : {}),
                 }}
               >
                 {savingDraft ? 'Saving…' : draftId ? 'Update draft' : 'Save draft'}
